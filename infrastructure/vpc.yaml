@@ -1,0 +1,107 @@
+Description: >
+  Deploys a vpc, and three subnets for the ghost blogging HA service
+
+Parameters:
+
+  EnvironmentName:
+    Description: an env name that will be prefixed to resource names
+    Type: String
+
+  VpcCIDR:
+    Description: ip range for this vpc
+    Type: String
+    Default: 10.190.0.0/16
+
+  Subnet1CIDR:
+    Description: ip range for the first availability zone
+    Type: String
+    Default: 10.190.1.0/24
+
+  Subnet2CIDR:
+    Description: ip range for the second availability zone
+    Type: String
+    Default: 10.190.2.0/24
+
+Resources:
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs ]
+      CidrBlock: !Ref Subnet1CIDR
+      MapPublicIpOnLaunch: true 
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} subnet (AZ1)
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs ]
+      CidrBlock: !Ref Subnet2CIDR
+      MapPublicIpOnLaunch: true 
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} subnet (AZ2)
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} routes
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  Subnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet1
+
+  Subnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet2
+
+Outputs:
+
+  VPC:
+    Description: a reference to the vpc created
+    Value: !Ref VPC
+
+  Subnets:
+    Description: a reference to our ec2 subnets
+    Value: !Join [",", [!Ref Subnet1, !Ref Subnet2]]
+

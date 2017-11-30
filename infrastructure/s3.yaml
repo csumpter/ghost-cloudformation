@@ -1,0 +1,71 @@
+Description: >
+  Creates a s3 bucket to store the static content on our blog across containers
+
+Parameters:
+
+  EnvironmentName:
+    Description: an environment name that will be prefixed to resource names
+    Type: String
+
+  S3UserName:
+    Description: name of the username to connect to the s3 bucket
+    Type: String
+    
+Resources:
+
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: PublicRead
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      BucketName: !Sub ${EnvironmentName}-static
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-static
+
+  S3User:
+    Type: AWS::IAM::User
+    Properties:
+      Path: "/"
+      UserName: !Ref S3UserName
+      Policies:
+        - PolicyName: !Sub ${EnvironmentName}-S3ROLE-${AWS::Region}
+          PolicyDocument: !Sub |
+            {
+              "Version": "2012-10-17",
+              "Statement": [{
+              "Effect": "Allow",
+              "Action": "*",
+              "Resource": "arn:aws:s3:::${EnvironmentName}-static/*"
+              }]
+            }
+
+
+  AccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref S3User
+
+Outputs:
+
+  S3BucketName:
+    Description: the name of the s3 bucket to connect to
+    Value: !Sub ${EnvironmentName}-static
+
+  S3Url:
+    Description: the endpoint for the s3 bucket
+    Value: !GetAtt S3Bucket.WebsiteURL
+
+  S3UserName:
+    Description: the name of the S3 user to use when connecting to the s3 bucket
+    Value: !Ref S3UserName
+
+  S3UserAccessKey:
+    Description: access key to connect to the s3 bucket
+    Value: !Ref AccessKey
+
+  S3UserSecretKey:
+    Description: secret key to connect to the s3 bucket
+    Value: !GetAtt AccessKey.SecretAccessKey

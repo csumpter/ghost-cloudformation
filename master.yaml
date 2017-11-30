@@ -1,0 +1,120 @@
+Description: >
+  This cloud formation template deploys the ghost blogging platform across
+  multiple available zones(AZ) utilizing docker containers with a multi AZ
+  rds setup, efs backend for content storage, and an application load balancer.
+
+  link to project source: https://github.com/TryGhost/Ghost
+
+  Author: Cameron Sumpter <cameron[at]sumpter[dot]xyz>
+  Repo: https://github.com/csumpter/ops-challenge
+
+Parameters:
+
+  DatabaseUsername:
+    Description: provide the name of the database username
+    Type: String
+    Default: 'awsuser'
+
+  DatabasePassword:
+    Description: provide the database password
+    Type: String
+    NoEcho: true
+    # password validation, must be at least 8 but no more than 41 chars
+    MinLength: 8
+    MaxLength: 41
+
+  DatabaseName:
+    Type: String
+    Description: provide the name you want to call the rds database
+    Default: 'ghostdb'
+
+Resources:
+
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/ghost-service/infrastructure/vpc.yaml 
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        VpcCIDR:         10.190.0.0/16
+        # subnet for resources in the first availability zone
+        Subnet1CIDR:     10.190.1.0/24
+        # subnet for resources in the second availability zone
+        Subnet2CIDR:     10.190.2.0/24
+
+  SecurityGroups:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/ghost-service/infrastructure/security-groups.yaml 
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        VPC: !GetAtt VPC.Outputs.VPC
+
+  ALB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/ghost-service/infrastructure/load-balancer.yaml
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        VPC: !GetAtt VPC.Outputs.VPC
+        Subnets: !GetAtt VPC.Outputs.Subnets
+        SecurityGroup: !GetAtt SecurityGroups.Outputs.LoadBalancerSecurityGroup
+
+  S3:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/ghost-service/infrastructure/s3.yaml
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        S3UserName: !Sub ${AWS::StackName}-s3-user
+
+  DB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/ghost-service/infrastructure/database.yaml
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        DatabaseUsername: !Ref DatabaseUsername
+        SecurityGroup: !GetAtt SecurityGroups.Outputs.DatabaseSecurityGroup
+        DatabasePassword: !Ref DatabasePassword
+        Subnets: !GetAtt VPC.Outputs.Subnets
+        DatabaseName: !Ref DatabaseName
+
+  ECS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/ghost-service/infrastructure/ecs-cluster.yaml
+      Parameters:
+        EnvironmentName: !Ref AWS::StackName
+        InstanceType: t2.micro
+        ClusterSize: 2 
+        VPC: !GetAtt VPC.Outputs.VPC
+        SecurityGroup: !GetAtt SecurityGroups.Outputs.EC2HostSecurityGroup
+        Subnets: !GetAtt VPC.Outputs.Subnets
+
+  GhostService:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/ghost-service/service/ghost.yaml
+      Parameters:
+        VPC: !GetAtt VPC.Outputs.VPC
+        Cluster: !GetAtt ECS.Outputs.Cluster
+        DesiredCount: 2
+        GhostServiceUrl: !GetAtt ALB.Outputs.LoadBalancerUrl 
+        Path: /
+        DatabaseUsername: !Ref DatabaseUsername
+        DatabasePassword: !Ref DatabasePassword
+        DatabaseHostname: !GetAtt DB.Outputs.DatabaseAddress
+        Listener: !GetAtt ALB.Outputs.Listener
+        DatabaseName: !Ref DatabaseName
+        S3BucketName: !GetAtt S3.Outputs.S3BucketName
+        S3Url: !GetAtt S3.Outputs.S3Url
+        S3UserName: !GetAtt S3.Outputs.S3UserName
+        S3UserAccessKey: !GetAtt S3.Outputs.S3UserAccessKey
+        S3UserSecretKey: !GetAtt S3.Outputs.S3UserSecretKey
+
+Outputs:
+
+    GhostServiceUrl: 
+        Description: The URL endpoint for the ghost service
+        Value: !GetAtt ALB.Outputs.LoadBalancerUrl

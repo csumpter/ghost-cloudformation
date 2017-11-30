@@ -1,0 +1,190 @@
+Description: >
+  deploys our ghost service in a docker container to n ec2 instances
+
+Parameters:
+
+  VPC:
+    Description: the vpc that the ecs cluster is deployed to
+    Type: AWS::EC2::VPC::Id
+
+  Cluster:
+    Description: the ecs cluster id the service should run on
+    Type: String
+
+  DesiredCount:
+    Description: how many instances of this task should we run on the cluster 
+    Type: Number
+
+  Listener:
+    Description: the application load balancer to register with
+    Type: String
+
+  Path:
+    Description: the path to register with the application load balancer
+    Type: String
+
+  DatabaseUsername:
+    Description: the username used to connect to the mysql database
+    Type: String
+
+  DatabasePassword:
+    Description: the password used to connect to the mysql database
+    Type: String
+
+  DatabaseHostname:
+    Description: the dns name of the database we will be connecting to
+    Type: String
+
+  DatabaseName:
+    Description: name of the ghost database on rds
+    Type: String
+
+  GhostServiceUrl:
+    Description: the url of the ghost service
+    Type: String
+    
+  S3BucketName:
+    Description: the name of the s3 bucket to connect to
+    Type: String
+
+  S3Url:
+    Description: the endpoint for the s3 bucket
+    Type: String
+
+  S3UserName:
+    Description: the name of the S3 user to use when connecting to the s3 bucket
+    Type: String
+
+  S3UserAccessKey:
+    Description: access key to connect to the s3 bucket
+    Type: String
+
+  S3UserSecretKey:
+    Description: secret key to connect to the s3 bucket
+    Type: String
+
+Resources:
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: ListenerRule
+    Properties:
+      Cluster: !Ref Cluster
+      Role: !Ref ServiceRole
+      DesiredCount: !Ref DesiredCount
+      TaskDefinition: !Ref TaskDefinition
+      LoadBalancers:
+        - ContainerName: ghost-service 
+          ContainerPort: 2368 
+          TargetGroupArn: !Ref TargetGroup
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: ghost-service
+      ContainerDefinitions:
+        - Name: ghost-service
+          Environment:
+            - Name: database__client
+              Value: mysql
+            - Name: database__connection__host
+              Value: !Ref DatabaseHostname
+            - Name: database__connection__user
+              Value: !Ref DatabaseUsername
+            - Name: database__connection__password
+              Value: !Ref DatabasePassword
+            - Name: database__connection__database
+              Value: !Ref DatabaseName
+            - Name: storage
+              Value: s3
+            - Name: AWS_ACCESS_KEY_ID
+              Value: !Ref S3UserAccessKey
+            - Name: AWS_SECRET_ACCESS_KEY
+              Value: !Ref S3UserSecretKey
+            - Name: AWS_DEFAULT_REGION
+              Value: !Ref AWS::Region
+            - Name: GHOST_STORAGE_ADAPTER_S3_PATH_BUCKET
+              Value: !Ref S3BucketName
+            - Name: NODE_ENV
+              Value: production
+            - Name: url
+              Value: !Join ["", ["http://", !Ref GhostServiceUrl ]]
+          Essential: true
+          Image: csumpter/aws-s3-ghost-blog:latest 
+          Memory: 128
+          PortMappings:
+            - ContainerPort: 2368
+              HostPort: 80
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref AWS::StackName
+              awslogs-region: !Ref AWS::Region
+
+  CloudWatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref AWS::StackName
+      RetentionInDays: 365
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VPC
+      Port: 80
+      Protocol: HTTP
+      Matcher:
+        HttpCode: 200-299
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref Listener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - !Ref Path
+      Actions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+
+  ServiceRole: 
+      Type: AWS::IAM::Role
+      Properties: 
+          RoleName: !Sub ecs-service-${AWS::StackName}
+          Path: /
+          AssumeRolePolicyDocument: |
+              {
+                  "Statement": [{
+                      "Effect": "Allow",
+                      "Principal": { "Service": [ "ecs.amazonaws.com" ]},
+                      "Action": [ "sts:AssumeRole" ]
+                  }]
+              }
+          Policies: 
+              - PolicyName: !Sub ecs-service-${AWS::StackName}
+                PolicyDocument: 
+                  {
+                      "Version": "2012-10-17",
+                      "Statement": [{
+                              "Effect": "Allow",
+                              "Action": [
+                                  "ec2:AuthorizeSecurityGroupIngress",
+                                  "ec2:Describe*",
+                                  "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                                  "elasticloadbalancing:Describe*",
+                                  "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                                  "elasticloadbalancing:DeregisterTargets",
+                                  "elasticloadbalancing:DescribeTargetGroups",
+                                  "elasticloadbalancing:DescribeTargetHealth",
+                                  "elasticloadbalancing:RegisterTargets"
+                              ],
+                              "Resource": "*"
+                      }]
+                  }

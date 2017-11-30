@@ -1,0 +1,59 @@
+Description: >
+  This template creates a multi AZ mysql database to connect our ghost service to
+
+Parameters:
+
+  SecurityGroup:
+    Description: reference to the ec2 hosts security group
+    Type: AWS::EC2::SecurityGroup::Id
+
+  DatabaseUsername:
+    Description: reference to the database default username that will be set
+    Type: String
+
+  DatabasePassword:
+    Description: reference to the database default password that will be set
+    Type: String
+    NoEcho: true
+
+  Subnets:
+    Description: reference to the subnets our EC2 hosts live in
+    Type: List<AWS::EC2::Subnet::Id>
+
+  EnvironmentName:
+    Description: an environment name that will be prefixed to resource names
+    Type: String
+
+  DatabaseName:
+    Description: name of the database
+    Type: String
+
+Resources:
+
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: ghost service subnets
+      SubnetIds: !Ref Subnets
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref DatabaseName 
+      Engine: MySQL
+      DBSubnetGroupName: 
+        Ref: DBSubnetGroup
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      AllocatedStorage: '20'
+      DBInstanceClass: db.t2.micro
+      MultiAZ: true
+      VPCSecurityGroups:
+        - !Ref SecurityGroup 
+
+Outputs:
+
+  DatabaseAddress:
+    Description: reference to the rds mysql url for the docker containers to connect to
+    Value: !GetAtt Database.Endpoint.Address
+       

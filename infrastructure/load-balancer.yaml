@@ -1,0 +1,67 @@
+Description: >
+  Deploys an Application Load Balancer that exposes our ghost service on port 80.
+
+Parameters:
+
+  EnvironmentName: 
+    Description: An environment name that will be prefixed to resource names.
+    Type: String
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: choose which vpc the application load balancer should be deployed to
+
+  Subnets:
+    Description: reference to subnet1
+    Type: List<AWS::EC2::Subnet::Id>
+
+  SecurityGroup:
+    Description: security group to apply to the alb
+    Type: AWS::EC2::SecurityGroup::Id
+
+Resources:
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Ref EnvironmentName
+      Subnets: !Ref Subnets
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref DefaultTargetGroup
+
+  DefaultTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${EnvironmentName}-default
+      VpcId: !Ref VPC
+      Port: 80
+      Protocol: HTTP
+
+Outputs:
+
+  LoadBalancer:
+    Description: a reference to the application load balancer id
+    Value: !Ref LoadBalancer
+
+  LoadBalancerUrl:
+    Description: the url of the application load balancer
+    Value: !GetAtt LoadBalancer.DNSName
+
+  Listener:
+    Description: A reference to a port 80 listener
+    Value: !Ref LoadBalancerListener
+
+

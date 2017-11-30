@@ -1,0 +1,88 @@
+Description: >
+  Deploys the security groups for our service stack. These groups will be
+  referenced in the templates that follow.
+
+Parameters:
+
+  EnvironmentName:
+    Description: an environment name that will be prefixed to resource names
+    Type: String
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC name the security groups will be added to
+
+Resources:
+
+  EC2HostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Access to the EC2 hosts that are housing our docker containers
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-EC2-Hosts
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Access to the load balancer that sits in front of the EC2 hosts
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-LoadBalancers
+
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: access to the efs mounts for static content
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref EC2HostSecurityGroup
+          IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-EFS-Mounts
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: Grants access to the database from ec2 hosts
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref EC2HostSecurityGroup
+          IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-RDS-Hosts
+
+Outputs:
+
+  EC2HostSecurityGroup:
+    Description: a reference to the security group for EC2 hosts
+    Value: !Ref EC2HostSecurityGroup
+
+  LoadBalancerSecurityGroup:
+    Description: a reference to the load balancer security group
+    Value: !Ref LoadBalancerSecurityGroup
+
+  EFSSecurityGroup:
+    Description: a reference to the efs volume security group
+    Value: !Ref EFSSecurityGroup
+
+  DatabaseSecurityGroup:
+    Description: a reference to the database access security group
+    Value: !Ref DatabaseSecurityGroup
