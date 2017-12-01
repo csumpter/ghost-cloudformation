@@ -28,6 +28,10 @@ Parameters:
   VPC:
     Type: AWS::EC2::VPC::Id
     Description: reference to the vpc the clusters will be deployed to 
+
+  TargetGroup:
+    Type: String
+    Description: reference to the load balancer target group
   
 Mappings:
 
@@ -50,6 +54,8 @@ Resources:
   ECSAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
+      TargetGroupARNs:
+        - !Ref TargetGroup
       VPCZoneIdentifier: !Ref Subnets
       LaunchConfigurationName: !Ref ECSLaunchConfiguration
       MinSize: !Ref ClusterSize
@@ -86,7 +92,7 @@ Resources:
       UserData:
         "Fn::Base64": !Sub |
           #!/bin/bash
-          yum install -y aws-cfn-bootstrap nfs-utils
+          yum install -y aws-cfn-bootstrap
           /opt/aws/bin/cfn-init -v --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSLaunchConfiguration
           /opt/aws/bin/cfn-signal -e $? --region ${AWS::Region} --stack ${AWS::StackName} --resource ECSAutoScalingGroup
 

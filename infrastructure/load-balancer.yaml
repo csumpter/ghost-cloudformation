@@ -19,6 +19,10 @@ Parameters:
     Description: security group to apply to the alb
     Type: AWS::EC2::SecurityGroup::Id
 
+  Path:
+    Description: the path to register with the application load balancer
+    Type: String
+
 Resources:
 
   LoadBalancer:
@@ -32,7 +36,7 @@ Resources:
         - Key: Name
           Value: !Ref EnvironmentName
 
-  LoadBalancerListener:
+  Listener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       LoadBalancerArn: !Ref LoadBalancer
@@ -42,6 +46,19 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref DefaultTargetGroup
 
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref Listener
+      Priority: 1
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - !Ref Path
+      Actions:
+        - TargetGroupArn: !Ref DefaultTargetGroup
+          Type: forward
+
   DefaultTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -49,6 +66,13 @@ Resources:
       VpcId: !Ref VPC
       Port: 80
       Protocol: HTTP
+      Matcher:
+        HttpCode: 200-299
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
 
 Outputs:
 
@@ -60,8 +84,12 @@ Outputs:
     Description: the url of the application load balancer
     Value: !GetAtt LoadBalancer.DNSName
 
-  Listener:
+  LoadBalancerListener:
     Description: A reference to a port 80 listener
-    Value: !Ref LoadBalancerListener
+    Value: !Ref Listener
+
+  LoadBalancerTargetGroup:
+    Description: a reference to the defeault load balancer target group
+    Value: !Ref DefaultTargetGroup
 
 
